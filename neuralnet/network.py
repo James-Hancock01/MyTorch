@@ -1,117 +1,100 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from re import X
 from numpy import floating
 from numpy.typing import NDArray
-from neuralnet.activators import activation_function, Softmax
+from neuralnet.activators import activation_function, Softmax, ReLU
 
 import numpy as np
 from typing import cast, List, Dict
 
 
 @dataclass()
-class Neuron:
-    nin: int
-    # g: activation_function
-
-    def __post_init__(
-        self,
-    ):
-        self.weights = np.array([np.random.uniform(-1, 1) for _ in range(self.nin)])
-        self.bias = np.random.uniform(-1, 1)
-
-    def forward(self, x: NDArray[floating]) -> NDArray[floating]:
-        """
-        Calculate the forward propagated value from this neuron
-        w . X + b
-        Activation function applied at the layer level
-        """
-        self.x = x  # cache input
-        # return x @ self.weights + self.bias
-        return np.dot(self.weights, x) + self.bias
-
-    def backward(self, dout: NDArray[floating]) -> NDArray[floating]:
-        """
-        Calculate the effect this neuron had on the final result
-        where X is the array of effects the next layer had on the result.
-        """
-        self.dweights = dout * self.x  # dL/dw
-        self.dbias = dout  # dL/db
-        return dout * self.weights  # dL/din - pass back
-
-    @property
-    def parameters(self) -> NDArray[floating]:
-        "Return a list of [weights, bias] for this neuron"
-        return self.weights + np.array([self.bias])
-
-    def set_parameters(self, weights: NDArray[floating], bias: floating) -> None:
-        self.weights = weights
-        self.bias = bias
-
-
-@dataclass()
-class Layer:
+class DenseLayer:
     nin: int
     nout: int
-    g: activation_function
 
     def __post_init__(
         self,
     ):
-        self.neurons = [Neuron(self.nin) for _ in range(self.nout)]
-        sell
+        self.weights = np.random.rand(self.nin, self.nout) - 0.5
+        self.biases = np.random.rand(self.nout) - 0.5  # np.zeros((self.nout,))
+        self.dweights = np.zeros_like(self.weights)
+        self.dbiases = np.zeros_like(self.biases)
 
-    def forward(self, X: NDArray[floating]) -> NDArray[floating]:
+    def forward(self, x: NDArray[floating]) -> NDArray[floating]:
         """
         Calculate the forward propagated value for all neurons in the layer
         Applying the activation function g(Z)
         """
-        Z = np.column_stack([n.forward(X) for n in self.neurons])
-        return self.g.forward(Z)
+        self.x = x  # cache for backwards propagation
+        return x @ self.weights + self.biases
 
-    def backward(self, X: NDArray[floating]) -> NDArray[floating]:
-        A = self.g.backward(X)
-        Z = np.column_stack([n.backward(A) for n in self.neurons])
-        return Z
+    def backward(self, dout: NDArray[floating]) -> NDArray[floating]:
+        """
+        Calculate the dweights and dbiases from
+        dout = dL/d(this layer's output)
+        """
+        self.dweights = self.x.T @ dout  # (nin, nout)
+        self.dbiases = dout.sum(axis=0)  # (nout,)
+        return dout @ self.weights.T  # dL/din - pass back to prev layer
+
+    def zero_grad(self):
+        self.dweights = np.zeros_like(self.weights)
+        self.dbiases = np.zeros_like(self.biases)
 
     @property
-    def parameters(self) -> NDArray[floating]:
+    def params(self) -> Dict[str, NDArray[floating]]:
         """
-        Return the network parameter list [weights, bias] for each neuron in the layer
+        Return the network parameter list for the layer
         """
-        return np.array(
-            [p for neuron in self.neurons for p in neuron.parameters], dtype=float
-        )
+        return {
+            "weights": self.weights,
+            "biases": self.biases,
+        }
+
+    @property
+    def grads(self) -> Dict[str, NDArray[floating]]:
+        """
+        Return the network gradient adjustments
+        """
+        return {
+            "dweights": self.dweights,
+            "dbiases": self.dbiases,
+        }
 
     def set_parameters(
         self, weights: NDArray[floating], biases: NDArray[floating]
     ) -> None:
-        assert weights.T.shape == (self.nout, self.nin)
-        for n, ws, b in zip(self.neurons, weights.T, biases):
-            print(f"{ws.shape=}, {b.shape=}")
-            n.set_parameters(ws, b)
+        weights_array = np.asarray(weights, dtype=float)
+        biases_array = np.asarray(biases, dtype=float).reshape(-1)
+
+        if weights_array.shape == (self.nout, self.nin):
+            weights_array = weights_array.T
+        elif weights_array.shape != (self.nin, self.nout):
+            raise AssertionError(
+                f"Expected weights shape {(self.nin, self.nout)} or {(self.nout, self.nin)}, got {weights_array.shape}"
+            )
+
+        if biases_array.shape != (self.nout,):
+            raise AssertionError(
+                f"Expected biases shape {(self.nout,)}, got {biases_array.shape}"
+            )
+
+        self.weights = weights_array
+        self.biases = biases_array
+        return
 
 
 @dataclass
 class MLP:
-    nin: int
-    nouts: List[int]
-    gs: List[activation_function]
+    layers: List[
+        DenseLayer | activation_function
+    ]  # alternating DenseLayer, ActivationFunction
 
     def __post_init__(self):
-        if len(self.gs) != len(self.nouts):
-            raise ValueError(
-                "Can only have as many activation functions as hidden layers"
-            )
-
-        if not isinstance(self.gs[-1], Softmax):
-            raise ValueError("Final activation function should be softmax")
-
-        self.sz: List[int] = [self.nin] + self.nouts
-        self.layers = [
-            Layer(nin=self.sz[i], nout=self.sz[i + 1], g=self.gs[i])
-            for i in range(len(self.nouts))
-        ]
+        pass
+        # if not isinstance(self.layers[-1], Softmax):
+        #     raise ValueError("Final layer should be softmax")
 
     def forward(self, x: NDArray[floating]) -> NDArray[floating]:
         """
@@ -132,14 +115,37 @@ class MLP:
 
         return x
 
+    def backward(self, loss_grad: NDArray[floating]):
+        grad = np.asarray(loss_grad, dtype=float)
+
+        for layer in reversed(self.layers):
+            grad = layer.backward(grad)
+        return grad
+
+    def update(self, lr: float):
+        for layer in self.layers:
+            if isinstance(layer, DenseLayer):
+                layer.weights -= lr * layer.dweights  # apply gradients
+                layer.biases -= lr * layer.dbiases
+
+    def zero_grad(self):
+        for layer in self.layers:
+            if isinstance(layer, DenseLayer):
+                layer.zero_grad()
+
     @property
-    def parameters(self) -> NDArray[floating]:
+    def params(self) -> List[Dict[str, NDArray[floating]]]:
         """
-        Return an array of all [weights, bias] for all neurons in all layers of the network
+        Return an array of all layer parameter dictionaries
         """
-        return np.array(
-            [p for layer in self.layers for p in layer.parameters], dtype=float
-        )
+        return [layer.params for layer in self.layers if isinstance(layer, DenseLayer)]
+
+    @property
+    def grads(self) -> List[Dict[str, NDArray[floating]]]:
+        """
+        Return an array of all layer parameter dictionaries
+        """
+        return [layer.grads for layer in self.layers if isinstance(layer, DenseLayer)]
 
     @classmethod
     def from_parameters_array(
@@ -153,17 +159,31 @@ class MLP:
         Takes parameters in the torch.nn.state_dict() format
         """
 
-        # layers = [
-        #     Layer(nin=p["weights"].shape[0], nout=p["weights"].shape[1], g=g)
-        #     for p, g in zip(parameters, gs)
-        # ]
+        layers: List[DenseLayer | activation_function] = []
         nin: int = cast(int, parameters[0]["weights"].shape[0])
-        nouts: List[int] = [cast(int, p["weights"].shape[1]) for p in parameters]
-        print("Network structure: ", [nin] + nouts)
 
-        mlp = cls(nin=nin, nouts=nouts, gs=gs)
+        for index, params in enumerate(parameters):
+            weights = np.asarray(params["weights"], dtype=float)
+            if weights.shape[0] == nin:
+                nout = cast(int, weights.shape[1])
+            elif weights.shape[1] == nin:
+                nout = cast(int, weights.shape[0])
+            else:
+                raise AssertionError(
+                    f"Cannot infer layer shape from weights with shape {weights.shape}"
+                )
 
-        for layer, p in zip(mlp.layers, parameters):
-            layer.set_parameters(p["weights"], p["biases"])
+            layer = DenseLayer(nin, nout)
+            layer.set_parameters(weights, params["biases"])
+            layers.append(layer)
 
+            if index < len(parameters) - 1:
+                activation = gs[index] if index < len(gs) else ReLU()
+                layers.append(activation)
+            else:
+                layers.append(Softmax())
+
+            nin = nout
+
+        mlp = cls(layers)
         return mlp

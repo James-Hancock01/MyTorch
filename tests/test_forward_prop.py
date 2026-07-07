@@ -1,8 +1,5 @@
 import pytest
-import torch
-import torch.nn as nn
-
-from neuralnet.network import MLP
+from neuralnet.network import MLP, DenseLayer
 from neuralnet.activators import ReLU
 from typing import List, Dict
 from numpy import floating
@@ -12,34 +9,33 @@ import numpy as np
 
 
 def test_forward_propagation():
-    torchmodel: nn.Sequential = nn.Sequential(
-        nn.Linear(4, 8),  # nin = 4, nout = 8
-        nn.ReLU(),
-        nn.Linear(8, 2),  # nin = 8, nout = 2
-        nn.Softmax(dim=1),
+    x = np.array([1.0, -1.0])
+    target = np.array([0.29])
+    model = MLP(
+        [
+            DenseLayer(2, 3),
+            ReLU(),
+            DenseLayer(3, 1),
+        ]
+    )
+    if not isinstance(model.layers[0], DenseLayer):
+        raise TypeError()
+    model.layers[0].set_parameters(
+        np.array([[0.2, -0.1, 0.3], [0.4, -0.2, 0.5]]),
+        np.array([0.1, -0.2, 0.3]),
     )
 
-    # Run a forward pass
-    x = torch.randn(2, 4)  # (batch size, nin)
-    torch_output = torchmodel(x)
-
-    params: List[Dict[str, NDArray[floating]]] = []
-    for module in torchmodel.modules():
-        if isinstance(module, nn.Linear):
-            params.append(
-                {
-                    "weights": module.weight.detach().numpy().T,
-                    "biases": module.bias.detach().numpy(),
-                }
-            )
-
-    model: MLP = MLP.from_parameters_array(params, gs=[ReLU()])
-
-    my_output = model.forward(x.numpy())
-
-    assert np.allclose(
-        my_output, torch_output.detach().numpy()
-    ), "Forward propagation invalid"
+    if not isinstance(model.layers[2], DenseLayer):
+        raise TypeError()
+    model.layers[2].set_parameters(
+        np.array([[0.7], [0.8], [0.9]]),
+        np.array([0.2]),
+    )
+    model.zero_grad()
+    prediction = model.forward(x)
+    print(f"{prediction=}")
+    assert np.isclose(prediction, target, atol=1e-5, rtol=1e-5)
+    pass
 
 
 if __name__ == "__main__":

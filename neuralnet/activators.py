@@ -2,26 +2,34 @@ from __future__ import annotations
 import numpy as np
 from numpy import floating
 from numpy.typing import NDArray
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any
 
 
 class activation_function(ABC):
     """
-    An activation function abstract base class,
+    An activation function, used as a layer in the network,
     on the forward pass returns the value of the function
     on the backward pass returns the value of its derivative
+    Caches its input on forward() so backward() can compute
+    dL/dinput = dout * f'(input) without external help
     """
 
-    @classmethod
     def forward(
-        cls, Z: NDArray[floating], *args: Any, **kwargs: Any
-    ) -> NDArray[floating]: ...
+        self, Z: NDArray[floating], *args: Any, **kwargs: Any
+    ) -> NDArray[floating]:
+        self.x = Z  # cache for backward
+        return self._apply(Z)
 
-    @classmethod
     def backward(
-        cls, Z: NDArray[floating], *args: Any, **kwargs: Any
-    ) -> NDArray[floating]: ...
+        self, dout: NDArray[floating], *args: Any, **kwargs: Any
+    ) -> NDArray[floating]:
+        return dout * self._derivative(self.x)
+
+    @abstractmethod
+    def _apply(self, Z: NDArray[floating]) -> NDArray[floating]: ...
+
+    def _derivative(self, Z: NDArray[floating]) -> NDArray[floating]: ...
 
 
 class ReLU(activation_function):
@@ -32,13 +40,11 @@ class ReLU(activation_function):
     dReLU(Z)/dZ = 1 if Z > 0 else 0
     """
 
-    @classmethod
-    def forward(cls, Z: NDArray[floating]) -> NDArray[floating]:
+    def _apply(self, Z: NDArray[floating]) -> NDArray[floating]:
         # np.maximum is element-wise so can use
         return np.maximum(0, Z)
 
-    @classmethod
-    def backward(cls, Z: NDArray[floating]) -> NDArray[floating]:
+    def _derivative(self, Z: NDArray[floating]) -> NDArray[floating]:
         return np.asarray(Z > 0, dtype=np.float64)
 
 
@@ -50,13 +56,11 @@ class Sigmoid(activation_function):
     dsigmoid(Z)/dZ = sigmoid(Z)(1-sigmoid(Z))
     """
 
-    @classmethod
-    def forward(cls, Z: NDArray[floating]) -> NDArray[floating]:
+    def _apply(self, Z: NDArray[floating]) -> NDArray[floating]:
         return 1 / (1 + np.exp(-Z))
 
-    @classmethod
-    def backward(cls, Z: NDArray[floating]) -> NDArray[floating]:
-        return cls.forward(Z) * (1 - cls.forward(Z))
+    def _derivative(self, Z: NDArray[floating]) -> NDArray[floating]:
+        return self._apply(Z) * (1 - self._apply(Z))
 
 
 class Tanh(activation_function):
@@ -67,18 +71,17 @@ class Tanh(activation_function):
     dtanh(Z)/dZ = 1 / (1 - Z^2)
     """
 
-    @classmethod
-    def forward(cls, Z: NDArray[floating]) -> NDArray[floating]:
+    def _apply(self, Z: NDArray[floating]) -> NDArray[floating]:
         return np.tanh(Z)
 
-    @classmethod
-    def backward(cls, Z: NDArray[floating]) -> NDArray[floating]:
+    def _derivative(self, Z: NDArray[floating]) -> NDArray[floating]:
         return 1 - np.tanh(Z) ** 2
 
 
 class Softmax(activation_function):
     """
-    Softmax function
+    Stateless utility used by CategoricalCrossEntry, not a network layer.
+    Kept separate from activation_function since it isn't used in MLP.layers
     """
 
     @classmethod
@@ -86,7 +89,3 @@ class Softmax(activation_function):
         shifted = Z - np.max(Z, axis=dim, keepdims=True)
         exp_shifted = np.exp(shifted)
         return exp_shifted / np.sum(exp_shifted, axis=dim, keepdims=True)
-
-    @classmethod
-    def backward(cls, Z: NDArray[floating]) -> NDArray[floating]:
-        raise SyntaxError("Softmax function does not have a backwards")
