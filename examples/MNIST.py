@@ -1,9 +1,9 @@
 from neuralnet.network import MLP, DenseLayer
-from neuralnet.loss_functions import loss_function, CategoricalCrossEntropy
+from neuralnet.loss_functions import CategoricalCrossEntropy
 from neuralnet.activators import ReLU
-from neuralnet.optimisers import SGDMomentum, OptimizerHealthError
-from neuralnet.data import train_val_split, iterate_batches
-from neuralnet.metrics import History
+from neuralnet.optimisers import Adam
+from neuralnet.data import train_test_split, iterate_batches
+from neuralnet.metrics import History, evaluate
 import numpy as np
 
 trainset = np.load("trainset.npy")
@@ -18,8 +18,8 @@ full_train_X = full_train_X.astype("float32").reshape(-1, 28 * 28) / 255.0
 test_X = test_X.astype("float32").reshape(-1, 28 * 28) / 255.0
 
 # held-out validation split, separate from the final test set
-train_X, train_Y, val_X, val_Y = train_val_split(
-    full_train_X, full_train_Y, val_ratio=0.1, seed=0
+train_X, train_Y, val_X, val_Y = train_test_split(
+    full_train_X, full_train_Y, ratio=0.1, seed=0
 )
 print(f"{train_X.shape=}, {val_X.shape=}, {test_X.shape=}")
 
@@ -33,7 +33,7 @@ model = MLP(
     ]
 )
 loss_fn = CategoricalCrossEntropy()
-optimiser = SGDMomentum(lr=0.01, momentum=0.9)
+optimiser = Adam()  # SGDMomentum(lr=0.01, momentum=0.9)
 history = History()
 
 batch_size = 30
@@ -76,3 +76,5 @@ history.plot(save_path="training_curves.png")
 
 test_loss, test_acc = evaluate(model, loss_fn, test_X, test_Y)
 print(f"Test loss {test_loss:.4f}, test accuracy {test_acc:.3%}")
+
+model.save("MNIST_adam.npz")

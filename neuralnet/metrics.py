@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Tuple
 from matplotlib import pyplot as plt
 
 from neuralnet.data import iterate_batches
