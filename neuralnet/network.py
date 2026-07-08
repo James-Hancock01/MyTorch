@@ -2,10 +2,32 @@ from __future__ import annotations
 from dataclasses import dataclass
 from numpy import floating
 from numpy.typing import NDArray
-from neuralnet.activators import activation_function, Softmax, ReLU
-
+from torch import func
+from neuralnet import activators
+from neuralnet.activators import activation_function
 import numpy as np
 from typing import cast, List, Dict
+from pathlib import Path
+import inspect
+
+
+def _build_activation_registry() -> Dict[str, type]:
+    """
+    Discover all activation_function subclasses in neuralnet.activators so
+    MLP.save/load can identify them by class name
+    """
+    registry: Dict[str, type] = {}
+    for name, obj in inspect.getmembers(activators, inspect.isclass):
+        if (
+            issubclass(obj, activation_function)
+            and obj is not activation_function
+            and not inspect.isabstract(obj)
+        ):
+            registry[name] = obj
+    return registry
+
+
+_ACTIVATION_REGISTRY = _build_activation_registry()
 
 
 @dataclass()
@@ -146,6 +168,56 @@ class MLP:
         Return an array of all layer parameter dictionaries
         """
         return [layer.grads for layer in self.layers if isinstance(layer, DenseLayer)]
+
+    def save(self, path: Path) -> None:
+        """
+        Save weights, biases and enough architecture info to reconstruct this
+        MLP later via MLP.load()
+        """
+        arrays: Dict[str, NDArray[floating]] = {}
+        layer_kinds: List[str] = []
+
+        dense_index = 0
+        for layer in self.layers:
+            if isinstance(layer, DenseLayer):
+                arrays[f"weights_{dense_index}"] = layer.weights
+                arrays[f"biases_{dense_index}"] = layer.biases
+                layer_kinds.append(type(layer).__name__)
+                dense_index += 1
+            else:
+                layer_kinds.append(type(layer).__name__)
+
+        arrays["layer_kinds"] = np.array(layer_kinds, dtype="<U32")
+        np.savez(path, **arrays)
+
+    @classmethod
+    def load(cls, path: Path) -> MLP:
+        """
+        Reconstruct an MLP previously saved with MLP.save().
+        """
+        data = np.load(path)
+        layer_kinds = data["layer_kinds"]
+
+        layers: List[DenseLayer | activation_function] = []
+        dense_index = 0
+
+        for kind in layer_kinds:
+            if kind == DenseLayer.__name__:
+                weights = data[f"weights_{dense_index}"]
+                biases = data[f"biases_{dense_index}"]
+                nin, nout = weights.shape
+
+                layer = DenseLayer(nin, nout)
+                layer.weights = weights
+                layer.biases = biases
+                layers.append(layer)
+                dense_index += 1
+            else:
+                if kind not in _ACTIVATION_REGISTRY:
+                    raise ValueError(f"Unknown activation type '{kind}' in saved file")
+                layers.append(_ACTIVATION_REGISTRY[kind]())
+
+        return cls(layers)
 
     @classmethod
     def from_parameters_array(
