@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple
 from matplotlib import pyplot as plt
+import numpy as np
+from numpy.typing import NDArray
 
 from neuralnet.data import iterate_batches
 from neuralnet.network import MLP
@@ -66,14 +68,14 @@ def evaluate(
     """
     Returns (avg_loss, accuracy) over the given dataset.
     """
-    total_loss = 0.0
+    total_loss: float = 0.0
     total_correct = 0
     num_batches = 0
 
     for batch_X, batch_y in iterate_batches(X, y, batch_size, shuffle=False):
         pred = model.forward(batch_X)
         loss = loss_fn.forward(pred, batch_y)
-        total_loss += loss
+        total_loss += float(loss)
         total_correct += int((pred.argmax(axis=1) == batch_y).sum())
         num_batches += 1
 

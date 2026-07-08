@@ -51,17 +51,13 @@ for epoch in range(epochs):
         dL = loss_fn.backward()
         model.backward(dL)
 
-        try:
-            optimiser.step(model)
-        except OptimizerHealthError as e:
-            print(f"Stopping early at epoch {epoch+1}: {e}")
-            raise SystemExit(1)
+        optimiser.step(model)
 
         total_loss += loss
         total_correct += int((pred.argmax(axis=1) == batch_Y).sum())
         num_batches += 1
 
-    train_loss = total_loss / num_batches
+    train_loss = float(total_loss / num_batches)
     train_acc = total_correct / len(train_X)
     val_loss, val_acc = evaluate(model, loss_fn, val_X, val_Y, batch_size=batch_size)
 
