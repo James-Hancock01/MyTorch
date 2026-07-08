@@ -2,12 +2,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple
 from matplotlib import pyplot as plt
-import numpy as np
-from numpy.typing import NDArray
 
+from neuralnet.typing import Array
 from neuralnet.data import iterate_batches
 from neuralnet.network import MLP
 from neuralnet.loss_functions import loss_function
+import numpy as np
 
 
 @dataclass
@@ -61,8 +61,8 @@ class History:
 def evaluate(
     model: MLP,
     loss_fn: loss_function,
-    X: NDArray[np.floating],
-    y: NDArray[np.floating],
+    X: Array,
+    y: Array,
     batch_size: int = 32,
 ) -> Tuple[float, float]:
     """

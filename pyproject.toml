@@ -16,9 +16,6 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "torch",        # for comparison tests only
-    "tensorflow",   # demos
-    "keras",        # demos
     "ruff",
     "black",
 ]

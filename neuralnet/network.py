@@ -1,14 +1,12 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from numpy import floating
-from numpy.typing import NDArray
-from torch import func
-from neuralnet import activators
-from neuralnet.activators import activation_function
-import numpy as np
 from typing import cast, List, Dict
 from pathlib import Path
+from dataclasses import dataclass
+from neuralnet.typing import Array
+from neuralnet import activators
+from neuralnet.activators import activation_function, Softmax, ReLU
 import inspect
+import numpy as np
 
 
 def _build_activation_registry() -> Dict[str, type]:
@@ -43,7 +41,7 @@ class DenseLayer:
         self.dweights = np.zeros_like(self.weights)
         self.dbiases = np.zeros_like(self.biases)
 
-    def forward(self, x: NDArray[floating]) -> NDArray[floating]:
+    def forward(self, x: Array) -> Array:
         """
         Calculate the forward propagated value for all neurons in the layer
         Applying the activation function g(Z)
@@ -51,7 +49,7 @@ class DenseLayer:
         self.x = x  # cache for backwards propagation
         return x @ self.weights + self.biases
 
-    def backward(self, dout: NDArray[floating]) -> NDArray[floating]:
+    def backward(self, dout: Array) -> Array:
         """
         Calculate the dweights and dbiases from
         dout = dL/d(this layer's output)
@@ -65,7 +63,7 @@ class DenseLayer:
         self.dbiases = np.zeros_like(self.biases)
 
     @property
-    def params(self) -> Dict[str, NDArray[floating]]:
+    def params(self) -> Dict[str, Array]:
         """
         Return the network parameter list for the layer
         """
@@ -75,7 +73,7 @@ class DenseLayer:
         }
 
     @property
-    def grads(self) -> Dict[str, NDArray[floating]]:
+    def grads(self) -> Dict[str, Array]:
         """
         Return the network gradient adjustments
         """
@@ -84,9 +82,7 @@ class DenseLayer:
             "dbiases": self.dbiases,
         }
 
-    def set_parameters(
-        self, weights: NDArray[floating], biases: NDArray[floating]
-    ) -> None:
+    def set_parameters(self, weights: Array, biases: Array) -> None:
         weights_array = np.asarray(weights, dtype=float)
         biases_array = np.asarray(biases, dtype=float).reshape(-1)
 
@@ -118,7 +114,7 @@ class MLP:
         # if not isinstance(self.layers[-1], Softmax):
         #     raise ValueError("Final layer should be softmax")
 
-    def forward(self, x: NDArray[floating]) -> NDArray[floating]:
+    def forward(self, x: Array) -> Array:
         """
         Calculate the forward propagated values of the network
         """
@@ -137,7 +133,7 @@ class MLP:
 
         return x
 
-    def backward(self, loss_grad: NDArray[floating]):
+    def backward(self, loss_grad: Array) -> Array:
         grad = np.asarray(loss_grad, dtype=float)
 
         for layer in reversed(self.layers):
@@ -156,14 +152,14 @@ class MLP:
                 layer.zero_grad()
 
     @property
-    def params(self) -> List[Dict[str, NDArray[floating]]]:
+    def params(self) -> List[Dict[str, Array]]:
         """
         Return an array of all layer parameter dictionaries
         """
         return [layer.params for layer in self.layers if isinstance(layer, DenseLayer)]
 
     @property
-    def grads(self) -> List[Dict[str, NDArray[floating]]]:
+    def grads(self) -> List[Dict[str, Array]]:
         """
         Return an array of all layer parameter dictionaries
         """
@@ -174,7 +170,7 @@ class MLP:
         Save weights, biases and enough architecture info to reconstruct this
         MLP later via MLP.load()
         """
-        arrays: Dict[str, NDArray[floating]] = {}
+        arrays: Dict[str, Array] = {}
         layer_kinds: List[str] = []
 
         dense_index = 0
@@ -188,7 +184,7 @@ class MLP:
                 layer_kinds.append(type(layer).__name__)
 
         arrays["layer_kinds"] = np.array(layer_kinds, dtype="<U32")
-        np.savez(path, **arrays)
+        np.savez(path, **arrays, allow_pickle=True)
 
     @classmethod
     def load(cls, path: Path) -> MLP:
@@ -219,43 +215,30 @@ class MLP:
 
         return cls(layers)
 
-    @classmethod
-    def from_parameters_array(
-        cls,
-        parameters: List[Dict[str, NDArray[floating]]],
+    def update_parameters_from_dict(
+        self,
+        parameters: List[Dict[str, Array]],
         gs: List[activation_function],
-    ) -> MLP:
+    ) -> None:
         """
         Set the weights and biases of all neurons in all layers to predetermined values,
         useful for debugging.
         Takes parameters in the torch.nn.state_dict() format
         """
 
-        layers: List[DenseLayer | activation_function] = []
-        nin: int = cast(int, parameters[0]["weights"].shape[0])
-
-        for index, params in enumerate(parameters):
+        dense_index = 0
+        for layer in self.layers:
+            if not isinstance(layer, DenseLayer):
+                continue
+            params = parameters[dense_index]
             weights = np.asarray(params["weights"], dtype=float)
-            if weights.shape[0] == nin:
-                nout = cast(int, weights.shape[1])
-            elif weights.shape[1] == nin:
-                nout = cast(int, weights.shape[0])
-            else:
-                raise AssertionError(
-                    f"Cannot infer layer shape from weights with shape {weights.shape}"
-                )
+            biases = np.asarray(params["biases"], dtype=float)
+            assert (
+                weights.shape == layer.weights.shape
+            ), f"shape of weights does not match in layer {dense_index}"
+            assert (
+                biases.shape == layer.biases.shape
+            ), f"shape of biases does not match in layer {dense_index}"
 
-            layer = DenseLayer(nin, nout)
-            layer.set_parameters(weights, params["biases"])
-            layers.append(layer)
-
-            if index < len(parameters) - 1:
-                activation = gs[index] if index < len(gs) else ReLU()
-                layers.append(activation)
-            else:
-                layers.append(Softmax())
-
-            nin = nout
-
-        mlp = cls(layers)
-        return mlp
+            layer.set_parameters(weights, biases)
+            dense_index += 1

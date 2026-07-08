@@ -1,16 +1,15 @@
 from __future__ import annotations
 from typing import Iterator, Tuple
+from neuralnet.typing import Array
 import numpy as np
-from numpy import floating, integer
-from numpy.typing import NDArray
 
 
 def train_test_split(
-    X: NDArray[floating],
-    Y: NDArray[floating],
+    X: Array,
+    Y: Array,
     ratio: float = 0.1,
     seed: int | None = None,
-) -> Tuple[NDArray[floating], NDArray[floating], NDArray[floating], NDArray[floating]]:
+) -> Tuple[Array, Array, Array, Array]:
     """
     Split (X, y) into (train_X, train_Y, test_X, test_Y).
     Shuffles before splitting so a pre-sorted dataset doesn't bias the split
@@ -28,12 +27,12 @@ def train_test_split(
 
 
 def iterate_batches(
-    X: NDArray[floating],
-    Y: NDArray[floating],
+    X: Array,
+    Y: Array,
     batch_size: int,
     shuffle: bool = True,
     seed: int | None = None,
-) -> Iterator[Tuple[NDArray[floating], NDArray[floating]]]:
+) -> Iterator[Tuple[Array, Array]]:
     """
     Yielld (batch_X, batch_Y) pairs covering the full dataset once
     """

@@ -1,12 +1,10 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Dict
-import numpy as np
-from numpy import floating
-from numpy.typing import NDArray
-
+from neuralnet.typing import Array
 from neuralnet.network import MLP, DenseLayer
+import numpy as np
 
 
 class Optimizer(ABC):
@@ -43,7 +41,7 @@ class SGDMomentum(Optimizer):
 
     def __post_init__(self):
         # keyed by id(layer) so each DenseLayer instance gets its own velocity buffers
-        self._velocities: Dict[int, Dict[str, NDArray[floating]]] = {}
+        self._velocities: Dict[int, Dict[str, Array]] = {}
 
     def step(self, model: MLP) -> None:
         total_grad_norm_sq = np.inf
@@ -90,8 +88,8 @@ class Adam(Optimizer):
     eps: float = 1e-8
 
     def __post_init__(self):
-        self._m: Dict[int, Dict[str, NDArray[floating]]] = {}
-        self._v: Dict[int, Dict[str, NDArray[floating]]] = {}
+        self._m: Dict[int, Dict[str, Array]] = {}
+        self._v: Dict[int, Dict[str, Array]] = {}
         self._t: int = 0
 
     def step(self, model: MLP) -> None:
